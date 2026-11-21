@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monitor de Pagos POS</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --surface: #ffffff;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --emerald: #059669;
+      --emerald-dark: #047857;
+      --register: #0f172a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container { max-width: 980px; margin: 0 auto; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+    header h1 { font-size: 1.4rem; font-weight: 700; }
+    .estado { font-size: 0.9rem; color: var(--muted); }
+    .audio-btn {
+      width: 100%;
+      padding: 22px 28px;
+      font-size: 1.35rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 12px;
+      background: var(--emerald);
+      color: #fff;
+      cursor: pointer;
+      margin-bottom: 24px;
+      transition: background 150ms ease, transform 120ms ease;
+    }
+    .audio-btn:hover { background: var(--emerald-dark); }
+    .audio-btn:active { transform: scale(0.99); }
+    .audio-btn.activo {
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+      font-size: 1rem;
+      padding: 14px 20px;
+    }
+    .pantalla {
+      background: var(--register);
+      color: #ffffff;
+      border-radius: 14px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+    .pantalla .etiqueta { font-size: 0.9rem; color: #94a3b8; margin-bottom: 8px; }
+    .pantalla .monto {
+      font-family: Consolas, 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(2.75rem, 6vw, 4.75rem);
+      font-weight: 700;
+      color: #34d399;
+      letter-spacing: -0.02em;
+    }
+    .pantalla .mensaje {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #1e293b;
+      color: #f1f5f9;
+      font-size: clamp(1.1rem, 2.2vw, 1.4rem);
+      line-height: 1.45;
+      font-weight: 500;
+    }
+    .resumen {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .caja {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .caja .label { font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+    .caja .valor {
+      font-family: Consolas, 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      font-size: 1.75rem;
+      font-weight: 700;
+    }
+    .tabla-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .tabla-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .btn-secundario {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--ink);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 20px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.92rem; }
+    th { color: var(--muted); font-weight: 600; background: #f8fafc; }
+    td.num, th.num {
+      text-align: right;
+      font-family: Consolas, 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+    .vacio { padding: 36px; text-align: center; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Monitor de Pagos POS</h1>
+      <div id="estadoConexion" class="estado">Conectando...</div>
+    </header>
+
+    <button id="btnAudio" class="audio-btn">Activar Audio</button>
+
+    <section class="pantalla">
+      <div id="ultimaHora" class="etiqueta">Último pago recibido</div>
+      <div id="ultimoMonto" class="monto">$ 0</div>
+      <div id="ultimoMensaje" class="mensaje">Esperando notificaciones desde MacroDroid en POST /pago</div>
+    </section>
+
+    <section class="resumen">
+      <div class="caja">
+        <div class="label">Total recaudado del día</div>
+        <div id="totalDia" class="valor">$ 0</div>
+      </div>
+      <div class="caja">
+        <div class="label">Pagos recibidos hoy</div>
+        <div id="cantidadPagos" class="valor">0</div>
+      </div>
+    </section>
+
+    <section class="tabla-wrap">
+      <div class="tabla-head">
+        <strong>Historial de pagos del día</strong>
+        <button id="btnLimpiar" class="btn-secundario">Reiniciar día</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Hora</th>
+            <th>Mensaje de la notificación</th>
+            <th class="num">Monto (COP)</th>
+          </tr>
+        </thead>
+        <tbody id="listaPagos">
+          <tr><td colspan="3" class="vacio">Aún no hay pagos registrados hoy.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let audioActivo = false;
+    let audioCtx = null;
+    let pagosLocales = [];
+
+    const btnAudio = document.getElementById('btnAudio');
+    const btnLimpiar = document.getElementById('btnLimpiar');
+    const elEstado = document.getElementById('estadoConexion');
+    const elUltimaHora = document.getElementById('ultimaHora');
+    const elUltimoMonto = document.getElementById('ultimoMonto');
+    const elUltimoMensaje = document.getElementById('ultimoMensaje');
+    const elTotalDia = document.getElementById('totalDia');
+    const elCantidad = document.getElementById('cantidadPagos');
+    const elLista = document.getElementById('listaPagos');
+
+    const formatoCOP = new Intl.NumberFormat('es-CO');
+    const formatearCOP = (n) => '$ ' + formatoCOP.format(Math.round(n || 0));
+
+    function reproducirCampana() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const ahora = audioCtx.currentTime;
+      const notas = [
+        { f: 1318.5, t: 0, d: 0.4 },
+        { f: 1975.5, t: 0.14, d: 0.65 }
+      ];
+      notas.forEach(({ f, t, d }) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, ahora + t);
+        gain.gain.setValueAtTime(0.001, ahora + t);
+        gain.gain.linearRampToValueAtTime(0.45, ahora + t + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, ahora + t + d);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(ahora + t);
+        osc.stop(ahora + t + d + 0.02);
+      });
+    }
+
+    /**
+     * Formatea los números sin puntos de miles para que speechSynthesis
+     * lea cifras completas (ej. "$35.000" -> "35000 pesos").
+     */
+    function prepararTextoParaVoz(textoCompleto) {
+      let frase = String(textoCompleto || '').trim();
+      frase = frase.replace(
+        /(?:\$|COP\b)\s*(\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,]\d{1,2})?(\s*pesos\b)?/gi,
+        (_, cifra) => cifra.replace(/[.,]/g, '') + ' pesos'
+      );
+      frase = frase.replace(
+        /\b(\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?\b/g,
+        (_, cifra) => cifra.replace(/\./g, '')
+      );
+      return frase.replace(/\bpesos\s+pesos\b/gi, 'pesos').replace(/\s+/g, ' ').trim();
+    }
+
+    function leerMensajeEnVozAlta(textoCompleto) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const frase = prepararTextoParaVoz(textoCompleto);
+      const mensaje = new SpeechSynthesisUtterance(frase);
+      mensaje.lang = 'es-CO';
+      const voces = window.speechSynthesis.getVoices();
+      const vozEs = voces.find(v => v.lang.toLowerCase() === 'es-co') || voces.find(v => v.lang.toLowerCase().startsWith('es'));
+      if (vozEs) mensaje.voice = vozEs;
+      window.speechSynthesis.speak(mensaje);
+    }
+
+    btnAudio.addEventListener('click', () => {
+      audioActivo = true;
+      reproducirCampana();
+      btnAudio.classList.add('activo');
+      btnAudio.textContent = 'Audio y voz activos — Pulsa aquí para probar la alerta';
+      setTimeout(() => {
+        leerMensajeEnVozAlta('Recibiste una transferencia de Carlos Pérez por $35.000');
+      }, 360);
+    });
+
+    btnLimpiar.addEventListener('click', async () => {
+      await fetch('/api/pagos', { method: 'DELETE' });
+    });
+
+    function escaparHTML(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function renderizar(estado) {
+      pagosLocales = estado.pagos || [];
+      elTotalDia.textContent = formatearCOP(estado.totalDia || 0);
+      elCantidad.textContent = String(estado.cantidadPagos || pagosLocales.length);
+
+      const ultimo = estado.ultimoPago || pagosLocales[0] || null;
+      if (ultimo) {
+        elUltimaHora.textContent = `Último pago recibido · ${ultimo.hora}`;
+        elUltimoMonto.textContent = formatearCOP(ultimo.monto);
+        elUltimoMensaje.textContent = ultimo.textoCompleto;
+      } else {
+        elUltimaHora.textContent = 'Último pago recibido';
+        elUltimoMonto.textContent = '$ 0';
+        elUltimoMensaje.textContent = 'Esperando notificaciones desde MacroDroid en POST /pago';
+      }
+
+      if (!pagosLocales.length) {
+        elLista.innerHTML = '<tr><td colspan="3" class="vacio">Aún no hay pagos registrados hoy.</td></tr>';
+        return;
+      }
+
+      elLista.innerHTML = pagosLocales.map((p) => `
+        <tr>
+          <td>${escaparHTML(p.hora)}</td>
+          <td>${escaparHTML(p.textoCompleto)}</td>
+          <td class="num">${formatearCOP(p.monto)}</td>
+        </tr>
+      `).join('');
+    }
+
+    socket.on('connect', () => { elEstado.textContent = 'Conectado en tiempo real'; });
+    socket.on('disconnect', () => { elEstado.textContent = 'Desconectado — Reconectando...'; });
+
+    socket.on('estado_inicial', (estado) => renderizar(estado));
+    socket.on('caja_reiniciada', (estado) => renderizar(estado));
+
+    socket.on('nuevo_pago', (datos) => {
+      const pago = {
+        id: datos.id || String(Date.now()),
+        monto: datos.monto,
+        textoCompleto: datos.textoCompleto,
+        hora: datos.hora
+      };
+      if (pagosLocales.some((p) => p.id === pago.id)) return;
+      const actualizados = [pago, ...pagosLocales];
+      const totalDia = typeof datos.totalDia === 'number'
+        ? datos.totalDia
+        : actualizados.reduce((acc, p) => acc + p.monto, 0);
+
+      renderizar({
+        pagos: actualizados,
+        totalDia,
+        cantidadPagos: actualizados.length,
+        ultimoPago: pago
+      });
+
+      if (audioActivo) {
+        reproducirCampana();
+        setTimeout(() => leerMensajeEnVozAlta(pago.textoCompleto), 360);
+      }
+    });
+  </script>
+</body>
+</html>
