@@ -20,12 +20,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 let pagos = [];
 
 /**
- * Limpia el texto recibido eliminando emojis y caracteres extraños
- * que puedan enredar la lectura por voz en español.
+ * Limpia el texto recibido eliminando emojis, puntos orientales y caracteres
+ * extraños que puedan enredar la lectura por voz en español.
  */
 function limpiarTextoNotificacion(texto) {
   return String(texto || '')
     .replace(/\u00A0/g, ' ')
+    .replace(/。/g, '. ')
     .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ')
     .replace(/[^\p{L}\p{N}\s$.,:;/\-¿?¡!()]/gu, ' ')
     .replace(/\s+/g, ' ')
@@ -75,23 +76,18 @@ function calcularTotalDia() {
 }
 
 // Endpoint que recibe el JSON desde MacroDroid:
-// { "texto": "Nequi: Recibiste una transferencia de Carlos Pérez por $35.000" }
+// { "texto": "[not_title]. [not_text]" }
 app.post('/pago', (req, res) => {
-  const textoBruto = req.body.texto || req.body.text || req.body.mensaje || '';
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const textoBruto = body.texto || body.text || body.mensaje || '';
   const textoCompleto = limpiarTextoNotificacion(textoBruto);
 
   if (!textoCompleto) {
     return res.status(400).json({ ok: false, error: 'Falta el campo "texto" en el JSON.' });
   }
 
-  const monto = extraerMontoCOP(textoCompleto);
-  if (!monto) {
-    return res.status(400).json({
-      ok: false,
-      error: 'No se encontró un monto válido en COP.',
-      textoCompleto
-    });
-  }
+  const montoDetectado = extraerMontoCOP(textoCompleto);
+  const monto = montoDetectado || 0;
 
   const ahora = new Date();
   const hora = ahora.toLocaleTimeString('es-CO', {
@@ -112,7 +108,6 @@ app.post('/pago', (req, res) => {
   pagos.unshift(nuevoPago);
   const totalDia = calcularTotalDia();
 
-  // Emitir por Socket.io al navegador con { monto, textoCompleto, hora }
   io.emit('nuevo_pago', {
     id: nuevoPago.id,
     monto: nuevoPago.monto,
@@ -159,5 +154,5 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Monitor POS ejecutándose en http://localhost:${PORT}`);
-  console.log(`Endpoint MacroDroid: POST http://TU_IP_LOCAL:${PORT}/pago`);
+  console.log(`Endpoint MacroDroid: POST https://monitor-nequi.onrender.com/pago`);
 });
